@@ -28,15 +28,50 @@ on:
         required: false
         default: false
         type: boolean
+  push:
+    branches: [main]
+    paths:
+      - 'docker/Dockerfile.*'
 
 
 permissions:
   contents: read
   packages: write
 
+concurrency:
+  group: infra-build-image-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  detect-changes:
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    outputs:
+      py310: ${{ steps.filter.outputs.py310 }}
+      py311: ${{ steps.filter.outputs.py311 }}
+      py312: ${{ steps.filter.outputs.py312 }}
+      py312_cuda: ${{ steps.filter.outputs.py312_cuda }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Detect changed Dockerfiles
+        id: filter
+        uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        with:
+          base: ${{ github.ref }}
+          filters: |
+            py310:
+              - 'docker/Dockerfile.python3.10'
+            py311:
+              - 'docker/Dockerfile.python3.11'
+            py312:
+              - 'docker/Dockerfile.python3.12'
+            py312_cuda:
+              - 'docker/Dockerfile.python3.12.cuda12.9.1'
+
   build-python-3-10:
-    if: ${{ github.event.inputs.python_3_10 == 'true' }}
+    needs: detect-changes
+    if: ${{ !cancelled() && ((github.event_name == 'workflow_dispatch' && github.event.inputs.python_3_10 == 'true') || (github.event_name == 'push' && needs.detect-changes.outputs.py310 == 'true')) }}
     uses: ./.github/workflows/_template-build-image.yml
     with:
       python_version: '3.10'
@@ -45,7 +80,8 @@ jobs:
     secrets: inherit
 
   build-python-3-11:
-    if: ${{ github.event.inputs.python_3_11 == 'true' }}
+    needs: detect-changes
+    if: ${{ !cancelled() && ((github.event_name == 'workflow_dispatch' && github.event.inputs.python_3_11 == 'true') || (github.event_name == 'push' && needs.detect-changes.outputs.py311 == 'true')) }}
     uses: ./.github/workflows/_template-build-image.yml
     with:
       python_version: '3.11'
@@ -54,7 +90,8 @@ jobs:
     secrets: inherit
 
   build-python-3-12:
-    if: ${{ github.event.inputs.python_3_12 == 'true' }}
+    needs: detect-changes
+    if: ${{ !cancelled() && ((github.event_name == 'workflow_dispatch' && github.event.inputs.python_3_12 == 'true') || (github.event_name == 'push' && needs.detect-changes.outputs.py312 == 'true')) }}
     uses: ./.github/workflows/_template-build-image.yml
     with:
       python_version: '3.12'
@@ -63,7 +100,8 @@ jobs:
     secrets: inherit
 
   build-python-3-12-cuda-12-9:
-    if: ${{ github.event.inputs.python_3_12_cuda_12_9 == 'true' }}
+    needs: detect-changes
+    if: ${{ !cancelled() && ((github.event_name == 'workflow_dispatch' && github.event.inputs.python_3_12_cuda_12_9 == 'true') || (github.event_name == 'push' && needs.detect-changes.outputs.py312_cuda == 'true')) }}
     uses: ./.github/workflows/_template-build-image.yml
     with:
       python_version: '3.12'
